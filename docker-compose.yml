@@ -1,0 +1,26 @@
+services:
+  whisper:
+    build: ./whisper
+    container_name: whisper-stt
+    ports:
+      - "${WHISPER_PORT:-9500}:9500"
+    environment:
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+    volumes:
+      - whisper-models:/models
+    restart: unless-stopped
+
+  piper:
+    build: ./piper
+    container_name: piper-tts
+    ports:
+      - "${PIPER_PORT:-9501}:9501"
+    environment:
+      - PIPER_VOICE=${PIPER_VOICE:-en_US-lessac-medium}
+    volumes:
+      - piper-models:/models
+    restart: unless-stopped
+
+volumes:
+  whisper-models:
+  piper-models:
