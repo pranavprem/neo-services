@@ -1,10 +1,11 @@
 # Neo Services
 
-Local AI services optimized for Apple Silicon (M4 Mac mini): speech-to-text, text-to-speech, and image generation.
+Local AI services optimized for Apple Silicon (M4 Mac mini): speech-to-text, text-to-speech, image generation, and a web UI.
 
 - **Whisper STT** — transcribe audio files to text (Docker)
 - **Piper TTS** — convert text to natural-sounding speech (Docker)
 - **ImageGen** — generate images from text prompts via Flux Schnell (native, Metal GPU)
+- **Content Generator** — web UI for image generation with social-media templates & img2img
 
 ## Architecture
 
@@ -21,23 +22,57 @@ Local AI services optimized for Apple Silicon (M4 Mac mini): speech-to-text, tex
    ─────────────────────│  │  ImageGen (mflux)    │   │
                         │  │  :9502               │   │
                         │  └──────────────────────┘   │
+                        ├──────────────────────────────┤
+   Web UI               │  ┌──────────────────────┐   │
+   ─────────────────────│  │  Content Generator   │   │
+                        │  │  :9503               │   │
+                        │  └──────────────────────┘   │
                         └──────────────────────────────┘
 ```
 
-**Why the split?** Whisper and Piper run fine in Docker containers. ImageGen uses [mflux](https://github.com/filipstrand/mflux) (MLX-based Flux) which requires direct Metal/GPU access — Docker on macOS doesn't expose Metal, so it runs natively.
+**Why the split?** Whisper and Piper run fine in Docker containers. ImageGen uses [mflux](https://github.com/filipstrand/mflux) (MLX-based Flux) which requires direct Metal/GPU access — Docker on macOS doesn't expose Metal, so it runs natively. The web UI is a static single-page app served via Python.
 
 ## Quick Start
 
 ```bash
-# Start Whisper + Piper (Docker)
+# Start everything
 cd ~/git/neo-services
+
+# 1. Whisper + Piper (Docker)
 docker compose up -d --build
 
-# Start ImageGen (native — needs Apple Silicon)
-cd imagegen && ./run.sh
+# 2. ImageGen (native — needs Apple Silicon)
+cd imagegen && ./run.sh &
 
-# First startup downloads models:
-#   Whisper ~140MB (base), Piper voice ~60MB, Flux Schnell ~3.5GB (4-bit)
+# 3. Content Generator Web UI
+python3 web/serve.py &
+
+# Open http://localhost:9503 in your browser
+```
+
+## Content Generator (Web UI)
+
+A sleek, dark-mode single-page app for generating images with social-media presets.
+
+**Features:**
+- **Template presets** — Instagram Post/Story, Twitter/X, YouTube Thumbnail, Meme, Product Photo, Abstract Art — auto-set dimensions and style hints
+- **Image-to-image (img2img)** — upload a reference image + set strength to guide the generation
+- **Settings** — width, height, steps, seed (collapsible panel)
+- **History** — recent generations stored in localStorage with click-to-reuse
+- **Download, Regenerate, Copy Prompt** actions on every result
+- **Responsive** — works on desktop and mobile
+
+**Start:**
+
+```bash
+python3 web/serve.py
+# → http://localhost:9503
+```
+
+Or simply:
+
+```bash
+cd web && python3 -m http.server 9503
 ```
 
 ## API Endpoints
@@ -97,21 +132,61 @@ curl http://localhost:9501/health
 
 ### ImageGen (port 9502)
 
-**POST /generate** — Generate an image from a text prompt. Returns PNG binary.
+The ImageGen API supports both **text-to-image** and **image-to-image** generation.
+
+#### Text-to-Image (JSON)
+
+**POST /generate/json** — Simple JSON endpoint for text-to-image only.
 
 ```bash
-# Generate an image (saves to output.png)
-curl -X POST http://localhost:9502/generate \
+curl -X POST http://localhost:9502/generate/json \
   -H "Content-Type: application/json" \
   -d '{"prompt": "a cyberpunk cat in neon tokyo"}' \
   -o output.png
 
 # With custom parameters
-curl -X POST http://localhost:9502/generate \
+curl -X POST http://localhost:9502/generate/json \
   -H "Content-Type: application/json" \
   -d '{"prompt": "mountain landscape at sunset", "width": 1024, "height": 768, "steps": 4, "seed": 42}' \
   -o landscape.png
 ```
+
+#### Text-to-Image or Image-to-Image (Multipart Form)
+
+**POST /generate** — Multipart form data. Accepts an optional reference image for img2img.
+
+```bash
+# Text-to-image via form
+curl -X POST http://localhost:9502/generate \
+  -F "prompt=a cyberpunk cat in neon tokyo" \
+  -F "width=1024" \
+  -F "height=1024" \
+  -o output.png
+
+# Image-to-image
+curl -X POST http://localhost:9502/generate \
+  -F "prompt=transform into watercolor painting" \
+  -F "image=@reference.png" \
+  -F "strength=0.6" \
+  -F "width=1024" \
+  -F "height=1024" \
+  -o result.png
+```
+
+**Parameters:**
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `prompt` | string | required | Text description of the image |
+| `width` | int | 1024 | Output width (256–2048) |
+| `height` | int | 1024 | Output height (256–2048) |
+| `steps` | int | 4 | Inference steps (Schnell works well with 2–4) |
+| `seed` | int | random | Seed for reproducibility |
+| `image` | file | — | Reference image for img2img (optional) |
+| `strength` | float | 0.4 | How much the reference image influences output (0.0–1.0, img2img only) |
+
+**Response headers:**
+- `X-Seed` — the seed used for generation
+- `X-Generation-Time` — generation time in seconds
 
 **GET /health**
 
@@ -168,10 +243,13 @@ neo-services/
 │   ├── Dockerfile
 │   ├── app.py               # FastAPI — POST /speak, GET /voices, /health
 │   └── requirements.txt
-└── imagegen/
-    ├── app.py               # FastAPI — POST /generate, GET /health, /models
-    ├── requirements.txt
-    └── run.sh               # Creates venv, installs deps, starts uvicorn
+├── imagegen/
+│   ├── app.py               # FastAPI — POST /generate, GET /health, /models
+│   ├── requirements.txt
+│   └── run.sh               # Creates venv, installs deps, starts uvicorn
+└── web/
+    ├── index.html            # Content Generator SPA (single-file, no deps)
+    └── serve.py              # Simple HTTP server on :9503
 ```
 
 ## Management
@@ -187,6 +265,15 @@ docker compose up -d --build      # Rebuild
 cd imagegen && ./run.sh           # Start (foreground)
 # Or background it:
 cd imagegen && nohup ./run.sh &   # Start (background)
+
+# Web UI
+python3 web/serve.py              # Start (foreground)
+python3 web/serve.py &            # Start (background)
+
+# Start everything at once
+docker compose up -d --build && \
+  (cd imagegen && nohup ./run.sh &) && \
+  python3 web/serve.py &
 
 # Reset model caches
 docker volume rm neo-services_whisper-models neo-services_piper-models
