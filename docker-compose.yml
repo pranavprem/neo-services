@@ -1,3 +1,5 @@
+name: neo-services
+
 services:
   whisper:
     build: ./whisper
@@ -20,6 +22,11 @@ services:
     volumes:
       - piper-models:/models
     restart: unless-stopped
+
+  # NOTE: imagegen runs OUTSIDE Docker (native Python) for Metal GPU access.
+  # See imagegen/run.sh — it needs direct Apple Silicon GPU (MPS/Metal).
+  # Docker on macOS doesn't expose Metal, so mflux won't work in a container.
+  # Start it with: cd imagegen && ./run.sh
 
 volumes:
   whisper-models:

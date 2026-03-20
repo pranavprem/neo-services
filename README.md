@@ -1,19 +1,43 @@
-# Voice Services
+# Neo Services
 
-Local speech-to-text and text-to-speech as Docker services, optimized for Apple Silicon (M4 Mac mini, CPU-only).
+Local AI services optimized for Apple Silicon (M4 Mac mini): speech-to-text, text-to-speech, and image generation.
 
-- **Whisper STT** — transcribe audio files to text
-- **Piper TTS** — convert text to natural-sounding speech
+- **Whisper STT** — transcribe audio files to text (Docker)
+- **Piper TTS** — convert text to natural-sounding speech (Docker)
+- **ImageGen** — generate images from text prompts via Flux Schnell (native, Metal GPU)
+
+## Architecture
+
+```
+                        ┌──────────────────────────────┐
+                        │        neo-services           │
+                        ├──────────────────────────────┤
+   Docker Compose       │  ┌─────────┐  ┌──────────┐  │
+   ─────────────────────│  │ Whisper  │  │  Piper   │  │
+                        │  │  :9500   │  │  :9501   │  │
+                        │  └─────────┘  └──────────┘  │
+                        ├──────────────────────────────┤
+   Native (Metal GPU)   │  ┌──────────────────────┐   │
+   ─────────────────────│  │  ImageGen (mflux)    │   │
+                        │  │  :9502               │   │
+                        │  └──────────────────────┘   │
+                        └──────────────────────────────┘
+```
+
+**Why the split?** Whisper and Piper run fine in Docker containers. ImageGen uses [mflux](https://github.com/filipstrand/mflux) (MLX-based Flux) which requires direct Metal/GPU access — Docker on macOS doesn't expose Metal, so it runs natively.
 
 ## Quick Start
 
 ```bash
-# Clone and start
-cd ~/git/voice-services
+# Start Whisper + Piper (Docker)
+cd ~/git/neo-services
 docker compose up -d --build
 
-# First startup downloads models — Whisper ~140MB (base), Piper voice ~60MB
-# Subsequent starts are instant thanks to volume caching
+# Start ImageGen (native — needs Apple Silicon)
+cd imagegen && ./run.sh
+
+# First startup downloads models:
+#   Whisper ~140MB (base), Piper voice ~60MB, Flux Schnell ~3.5GB (4-bit)
 ```
 
 ## API Endpoints
@@ -23,11 +47,9 @@ docker compose up -d --build
 **POST /transcribe** — Upload an audio file, get text back.
 
 ```bash
-# Transcribe an audio file
 curl -X POST http://localhost:9500/transcribe \
   -F "file=@recording.ogg"
 
-# Response:
 # {
 #   "text": "Hello, how are you?",
 #   "language": "en",
@@ -35,7 +57,7 @@ curl -X POST http://localhost:9500/transcribe \
 # }
 ```
 
-**GET /health** — Check service status.
+**GET /health**
 
 ```bash
 curl http://localhost:9500/health
@@ -47,7 +69,6 @@ curl http://localhost:9500/health
 **POST /speak** — Send text, receive a WAV audio file.
 
 ```bash
-# Generate speech (saves to output.wav)
 curl -X POST http://localhost:9501/speak \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello from Piper!"}' \
@@ -60,18 +81,50 @@ curl -X POST http://localhost:9501/speak \
   -o output.wav
 ```
 
-**GET /voices** — List locally available voices.
+**GET /voices** — List available voices.
 
 ```bash
 curl http://localhost:9501/voices
 # {"voices": [{"name": "en_US-lessac-medium", ...}], "default": "en_US-lessac-medium"}
 ```
 
-**GET /health** — Check service status.
+**GET /health**
 
 ```bash
 curl http://localhost:9501/health
 # {"status": "ok", "default_voice": "en_US-lessac-medium"}
+```
+
+### ImageGen (port 9502)
+
+**POST /generate** — Generate an image from a text prompt. Returns PNG binary.
+
+```bash
+# Generate an image (saves to output.png)
+curl -X POST http://localhost:9502/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "a cyberpunk cat in neon tokyo"}' \
+  -o output.png
+
+# With custom parameters
+curl -X POST http://localhost:9502/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "mountain landscape at sunset", "width": 1024, "height": 768, "steps": 4, "seed": 42}' \
+  -o landscape.png
+```
+
+**GET /health**
+
+```bash
+curl http://localhost:9502/health
+# {"status": "ok", "model": "flux-schnell", "quantize": 4, "device": "mps"}
+```
+
+**GET /models** — List available models.
+
+```bash
+curl http://localhost:9502/models
+# {"models": ["flux-schnell"], "active": "flux-schnell", "quantize": 4}
 ```
 
 ## Configuration
@@ -85,54 +138,57 @@ cp .env.example .env
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WHISPER_PORT` | `9500` | Whisper service port |
-| `WHISPER_MODEL` | `base` | Whisper model size: `tiny`, `base`, `small`, `medium`, `large` |
+| `WHISPER_MODEL` | `base` | Whisper model: `tiny`, `base`, `small`, `medium`, `large` |
 | `PIPER_PORT` | `9501` | Piper service port |
-| `PIPER_VOICE` | `en_US-lessac-medium` | Default Piper voice ([browse voices](https://rhasspy.github.io/piper-samples/)) |
+| `PIPER_VOICE` | `en_US-lessac-medium` | Default Piper voice ([browse](https://rhasspy.github.io/piper-samples/)) |
+| `IMAGEGEN_PORT` | `9502` | ImageGen service port (set in shell env) |
 
 ### Whisper Model Sizes
 
-| Model | Size | Relative Speed | Notes |
-|-------|------|-----------------|-------|
-| `tiny` | ~39MB | Fastest | Good enough for clear audio |
-| `base` | ~142MB | Fast | **Recommended** — good balance |
+| Model | Size | Speed | Notes |
+|-------|------|-------|-------|
+| `tiny` | ~39MB | Fastest | Good for clear audio |
+| `base` | ~142MB | Fast | **Recommended** |
 | `small` | ~466MB | Moderate | Better accuracy |
 | `medium` | ~1.5GB | Slow | Near-best accuracy |
-| `large` | ~2.9GB | Slowest | Best accuracy, heavy on CPU |
+| `large` | ~2.9GB | Slowest | Best accuracy |
 
-## Architecture
+## Project Structure
 
 ```
-voice-services/
-├── docker-compose.yml      # Orchestrates both services
+neo-services/
+├── docker-compose.yml       # Whisper + Piper (Docker)
 ├── .env.example             # Configuration template
 ├── README.md
 ├── whisper/
-│   ├── Dockerfile           # Python 3.11 + ffmpeg + openai-whisper
-│   ├── app.py               # FastAPI app
+│   ├── Dockerfile
+│   ├── app.py               # FastAPI — POST /transcribe, GET /health
 │   └── requirements.txt
-└── piper/
-    ├── Dockerfile           # Python 3.11 + piper binary (aarch64)
-    ├── app.py               # FastAPI app
-    └── requirements.txt
+├── piper/
+│   ├── Dockerfile
+│   ├── app.py               # FastAPI — POST /speak, GET /voices, /health
+│   └── requirements.txt
+└── imagegen/
+    ├── app.py               # FastAPI — POST /generate, GET /health, /models
+    ├── requirements.txt
+    └── run.sh               # Creates venv, installs deps, starts uvicorn
 ```
-
-Models are stored in Docker volumes (`whisper-models`, `piper-models`) and persist across container restarts.
 
 ## Management
 
 ```bash
-# Start services
-docker compose up -d
+# Docker services (Whisper + Piper)
+docker compose up -d              # Start
+docker compose logs -f            # Logs
+docker compose down               # Stop
+docker compose up -d --build      # Rebuild
 
-# View logs
-docker compose logs -f
+# ImageGen (native)
+cd imagegen && ./run.sh           # Start (foreground)
+# Or background it:
+cd imagegen && nohup ./run.sh &   # Start (background)
 
-# Stop services
-docker compose down
-
-# Rebuild after changes
-docker compose up -d --build
-
-# Reset model cache
-docker volume rm voice-services_whisper-models voice-services_piper-models
+# Reset model caches
+docker volume rm neo-services_whisper-models neo-services_piper-models
+rm -rf imagegen/.venv             # Reset imagegen venv + cached models
 ```
