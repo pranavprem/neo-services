@@ -1,3 +1,4 @@
 mflux
 fastapi
 uvicorn[standard]
+python-multipart

@@ -1,6 +1,13 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
+# Load .env if present (contains DISCORD_WEBHOOK_URL etc.)
+if [ -f .env ]; then
+    set -a
+    source .env
+    set +a
+fi
+
 # Create output dir and venv if missing
 mkdir -p output
 

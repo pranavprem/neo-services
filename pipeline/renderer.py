@@ -20,6 +20,7 @@ from config import (
 from queue_manager import QueueManager
 from compositor import Compositor
 import briefer
+import discord_notifier
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,23 @@ class Renderer:
             "gen_time": gen_time,
         })
 
+        # Post individual image to Discord
+        total_images = item.get("total_images", 1)
+        hashtags = [t.strip().strip("#") for t in (item.get("hashtags") or "").split() if t.strip()]
+        try:
+            await discord_notifier.post_completed_image(
+                image_path=image_path,
+                category=item.get("category", "unknown"),
+                theme=item.get("theme", "Untitled"),
+                caption=item.get("caption", ""),
+                hashtags=hashtags,
+                post_id=post_id,
+                image_index=item["image_index"],
+                total_images=total_images,
+            )
+        except Exception as e:
+            logger.error("Discord notification failed: %s", e)
+
         # Check if all images for this post are complete
         await self._check_post_complete(item, post_dir)
         self._current_item = None
@@ -259,6 +277,22 @@ class Renderer:
             "image_count": len(image_paths),
             "composite": composite_path,
         })
+
+        # Post composite to Discord if applicable
+        if composite_path and os.path.exists(composite_path):
+            hashtags_list = [t.strip().strip("#") for t in (item.get("hashtags") or "").split() if t.strip()]
+            try:
+                await discord_notifier.post_composite(
+                    image_path=composite_path,
+                    category=item.get("category", "unknown"),
+                    theme=item.get("theme", "Untitled"),
+                    caption=caption,
+                    hashtags=hashtags_list,
+                    post_id=item["post_id"],
+                    composite_type="grid" if post_type == "grid" else "side_by_side",
+                )
+            except Exception as e:
+                logger.error("Discord composite notification failed: %s", e)
         await self.broadcast({
             "type": "queue_update",
             "action": "completed",
@@ -293,5 +327,12 @@ class Renderer:
                     "items": [{"id": i} for i in added_ids],
                 })
                 logger.info("Added %d briefs (%d queue items)", len(briefs), len(added_ids))
+
+                # Post queue preview to Discord
+                try:
+                    pending_items = await asyncio.to_thread(self.queue.get_queue, "pending")
+                    await discord_notifier.post_queue_preview(pending_items)
+                except Exception as e:
+                    logger.error("Discord queue preview failed: %s", e)
         except Exception as e:
             logger.error("Failed to auto-refill queue: %s", e)

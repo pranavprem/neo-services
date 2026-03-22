@@ -49,6 +49,10 @@ CATEGORY_WEIGHTS = {
     "meme": 0.05,
 }
 
+# Discord webhook for posting completed content + queue updates
+# Set via environment variable — never commit the actual webhook URL
+DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
+
 # Compositor settings
 GRID_CELL_SIZE = 512
 GRID_PADDING = 40
