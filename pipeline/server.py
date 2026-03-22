@@ -28,6 +28,7 @@ renderer: Renderer | None = None
 
 async def broadcast(message: dict):
     """Send a message to all connected WebSocket clients."""
+    global connected_clients
     dead = set()
     for ws in list(connected_clients):
         try:

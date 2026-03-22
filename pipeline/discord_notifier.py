@@ -1,5 +1,6 @@
 """Discord webhook notifier — posts completed content and queue previews."""
 
+import asyncio
 import io
 import json
 import logging
@@ -115,33 +116,79 @@ async def post_composite(
 
 
 async def post_queue_preview(queue_items: list[dict]):
-    """Post a preview of the next items in the queue."""
+    """Post the full pipeline queue with complete prompts to Discord."""
     if not DISCORD_WEBHOOK_URL or not queue_items:
         return
 
-    lines = ["**📋 Up Next in the Pipeline:**\n"]
-    for i, item in enumerate(queue_items[:8], 1):
-        cat = item.get("category", "unknown").replace("_", " ").title()
-        theme = item.get("theme", "Untitled")[:60]
-        post_type = item.get("post_type", "single")
-        lines.append(f"`{i}.` **{theme}** ({cat}, {post_type})")
-
-    remaining = len(queue_items) - 8
-    if remaining > 0:
-        lines.append(f"\n*...and {remaining} more in queue*")
-
-    embed = {
-        "description": "\n".join(lines),
-        "color": 0x7b61ff,
+    category_emoji = {
+        "futuristic_concept": "🚀",
+        "dream_space": "🏠",
+        "what_if": "🤔",
+        "pick_your": "🎯",
+        "then_vs_2040": "🕰️",
+        "gf_knows": "💕",
+        "meme": "😂",
     }
 
+    # Group items by post_id
+    posts: dict[str, list[dict]] = {}
+    for item in queue_items:
+        pid = item.get("post_id", "unknown")
+        posts.setdefault(pid, []).append(item)
+
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                DISCORD_WEBHOOK_URL,
-                json={"embeds": [embed]},
-            )
-            if resp.status_code not in (200, 204):
-                logger.error(f"Queue preview webhook failed: {resp.status_code}")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Header
+            header = {
+                "title": f"📋 Full Pipeline Queue — {len(queue_items)} images across {len(posts)} posts",
+                "color": 0x00d4ff,
+            }
+            await client.post(DISCORD_WEBHOOK_URL, json={"embeds": [header]})
+            await asyncio.sleep(0.5)
+
+            # Send each post as its own embed (max 10 per message)
+            current_batch: list[dict] = []
+            for post_id, items in posts.items():
+                first = items[0]
+                cat = first.get("category", "unknown")
+                emoji = category_emoji.get(cat, "🎨")
+                theme = first.get("theme", "Untitled")
+                post_type = first.get("post_type", "single")
+                caption = first.get("caption", "")[:300]
+
+                # Full prompts
+                prompt_lines = []
+                for item in items:
+                    idx = item.get("image_index", 0) + 1
+                    prompt = item.get("prompt", "No prompt")
+                    prompt_lines.append(f"**Image {idx}:**\n```\n{prompt}\n```")
+
+                description = (
+                    f"**Theme:** {theme}\n"
+                    f"**Type:** {post_type}\n"
+                    f"**Caption:** _{caption}_\n\n"
+                    + "\n".join(prompt_lines)
+                )
+
+                # Discord embed description limit is 4096
+                if len(description) > 4096:
+                    description = description[:4090] + "\n..."
+
+                embed = {
+                    "title": f"{emoji} [{post_id}] {theme}",
+                    "description": description,
+                    "color": 0x7b61ff,
+                    "footer": {"text": f"{cat.replace('_', ' ').title()} • {len(items)} image(s)"},
+                }
+
+                current_batch.append(embed)
+                if len(current_batch) >= 5:  # keep batches smaller for readability
+                    await client.post(DISCORD_WEBHOOK_URL, json={"embeds": current_batch})
+                    current_batch = []
+                    await asyncio.sleep(1)  # respect rate limits
+
+            if current_batch:
+                await client.post(DISCORD_WEBHOOK_URL, json={"embeds": current_batch})
+
     except Exception as e:
         logger.error(f"Failed to post queue preview: {e}")

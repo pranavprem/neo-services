@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 # Reddit popular JSON (no auth needed)
 REDDIT_URL = "https://www.reddit.com/r/popular.json"
-# Google Trends RSS
-GOOGLE_TRENDS_URL = "https://trends.google.com/trends/trendingsearches/daily/rss?geo=US"
+# Google Trends RSS (updated URL — old /trends/trendingsearches/ path was deprecated)
+GOOGLE_TRENDS_URL = "https://trends.google.com/trending/rss?geo=US"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ContentPipeline/1.0",
@@ -52,7 +52,7 @@ async def fetch_google_trends() -> list[dict]:
             xml_text = resp.text
 
         root = ET.fromstring(xml_text)
-        ns = {"ht": "https://trends.google.com/trends/trendingsearches/daily"}
+        ns = {"ht": "https://trends.google.com/trending/rss"}
 
         for item in root.findall(".//item"):
             title_el = item.find("title")

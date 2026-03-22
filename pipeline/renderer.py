@@ -40,6 +40,10 @@ class Renderer:
     async def start(self):
         """Main rendering loop — runs as a background task."""
         self._running = True
+        # Recover any items stuck in 'rendering' from a previous crash/restart
+        recovered = await asyncio.to_thread(self.queue.recover_stale_rendering)
+        if recovered:
+            logger.info("Recovered %d stale rendering items back to pending", recovered)
         logger.info("Renderer started")
         while self._running:
             if self.paused:

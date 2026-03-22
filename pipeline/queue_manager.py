@@ -115,6 +115,14 @@ class QueueManager:
                 ids.append(cursor.lastrowid)
         return ids
 
+    def recover_stale_rendering(self) -> int:
+        """Reset any items stuck in 'rendering' back to 'pending' (crash recovery)."""
+        with self._get_conn() as conn:
+            cursor = conn.execute(
+                "UPDATE queue SET status = 'pending', started_at = NULL WHERE status = 'rendering'"
+            )
+            return cursor.rowcount
+
     def get_next_pending(self) -> dict | None:
         """Get the highest-priority pending item."""
         with self._get_conn() as conn:

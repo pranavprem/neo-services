@@ -131,7 +131,7 @@ async def generate_briefs(
                         "num_predict": 4096,
                     },
                 },
-                timeout=120.0,
+                timeout=600.0,  # 10 minutes — large model generating structured JSON needs time
             )
             response.raise_for_status()
     except httpx.HTTPError as e:
