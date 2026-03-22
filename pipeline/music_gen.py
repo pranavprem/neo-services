@@ -60,7 +60,7 @@ async def generate_music(
         "--output", output_path,
         "--no-playback",
         "--no-interactive",
-        "--model", "small",
+        "--model", "medium",
     ]
 
     logger.info(f"Generating {secs}s music: '{prompt[:60]}...'")
@@ -71,7 +71,7 @@ async def generate_music(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=900)  # 15 min for medium model
 
         if proc.returncode == 0 and os.path.exists(output_path):
             size_kb = os.path.getsize(output_path) / 1024
