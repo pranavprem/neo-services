@@ -168,6 +168,8 @@ async def merge_audio_video(
         "-c:v", "copy",
         "-c:a", "aac",
         "-b:a", "128k",
+        "-ar", "44100",  # resample to 44.1kHz (MusicGen outputs 32kHz which AAC doesn't like)
+        "-ac", "2",      # stereo
         "-shortest",
         "-movflags", "+faststart",
         output_path,
