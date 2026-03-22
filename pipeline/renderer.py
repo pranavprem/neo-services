@@ -21,6 +21,8 @@ from queue_manager import QueueManager
 from compositor import Compositor
 import briefer
 import discord_notifier
+import music_gen
+import video_compositor
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +232,7 @@ class Renderer:
                     pass  # ImageGen may be between requests
 
     async def _check_post_complete(self, item: dict, post_dir: str):
-        """Check if all images for a post are done and run compositor if needed."""
+        """Check if all images for a post are done, run compositor, then generate reels."""
         post_items = await asyncio.to_thread(
             self.queue.get_post_items, item["post_id"]
         )
@@ -271,6 +273,9 @@ class Renderer:
             if hashtags:
                 f.write(f"\n\n{hashtags}")
 
+        # --- Reels generation: music → Ken Burns videos → merge audio+video ---
+        reel_paths = await self._generate_reels(item, post_dir, image_paths)
+
         await self.broadcast({
             "type": "post_complete",
             "post_id": item["post_id"],
@@ -280,6 +285,7 @@ class Renderer:
             "caption": caption,
             "image_count": len(image_paths),
             "composite": composite_path,
+            "reels": reel_paths,
         })
 
         # Post composite to Discord if applicable
@@ -297,11 +303,114 @@ class Renderer:
                 )
             except Exception as e:
                 logger.error("Discord composite notification failed: %s", e)
+
+        # Post reel videos to Discord
+        if reel_paths:
+            hashtags_list = [t.strip().strip("#") for t in (item.get("hashtags") or "").split() if t.strip()]
+            for reel_path in reel_paths:
+                try:
+                    await discord_notifier.post_reel_video(
+                        video_path=reel_path,
+                        category=item.get("category", "unknown"),
+                        theme=item.get("theme", "Untitled"),
+                        caption=caption,
+                        hashtags=hashtags_list,
+                        post_id=item["post_id"],
+                    )
+                except Exception as e:
+                    logger.error("Discord reel notification failed: %s", e)
+
         await self.broadcast({
             "type": "queue_update",
             "action": "completed",
             "items": [{"id": i["id"], "post_id": i["post_id"]} for i in post_items],
         })
+
+    async def _generate_reels(
+        self, item: dict, post_dir: str, image_paths: list[str]
+    ) -> list[str]:
+        """Generate music, Ken Burns videos, and merge into final reels.
+
+        Runs AFTER image generation is complete (GPU is free for MusicGen).
+        Returns list of final reel MP4 paths.
+        """
+        if not image_paths:
+            return []
+
+        category = item.get("category", "custom")
+        post_id = item["post_id"]
+
+        await self.broadcast({
+            "type": "status_change",
+            "status": "generating_music",
+            "queue_item_id": item["id"],
+            "post_id": post_id,
+            "queue_length": await asyncio.to_thread(self.queue.pending_count),
+        })
+
+        # Step 1: Generate background music (uses GPU — Flux is idle now)
+        music_duration = video_compositor._get_duration()
+        music_path = os.path.join(post_dir, "music.wav")
+        try:
+            await music_gen.generate_music(
+                category=category,
+                duration=float(music_duration),
+                output_path=music_path,
+            )
+        except Exception as e:
+            logger.error("Music generation failed for %s: %s", post_id, e)
+            music_path = None
+
+        await self.broadcast({
+            "type": "status_change",
+            "status": "generating_reels",
+            "queue_item_id": item["id"],
+            "post_id": post_id,
+            "queue_length": await asyncio.to_thread(self.queue.pending_count),
+        })
+
+        # Step 2: Create Ken Burns videos for each image (CPU-based, GPU is free)
+        reel_paths = []
+        for idx, img_path in enumerate(image_paths):
+            video_path = os.path.join(post_dir, f"video_{idx}.mp4")
+            reel_path = os.path.join(post_dir, f"reel_{idx}.mp4")
+
+            try:
+                await video_compositor.create_ken_burns(
+                    image_path=img_path,
+                    output_path=video_path,
+                    duration=music_duration,
+                )
+
+                # Step 3: Merge audio + video if music was generated
+                if music_path and os.path.exists(music_path):
+                    await video_compositor.merge_audio_video(
+                        video_path=video_path,
+                        audio_path=music_path,
+                        output_path=reel_path,
+                    )
+                    # Clean up intermediate video-only file
+                    os.remove(video_path)
+                else:
+                    # No music — rename video to reel
+                    os.rename(video_path, reel_path)
+
+                reel_paths.append(reel_path)
+                logger.info("Reel %d/%d complete for %s", idx + 1, len(image_paths), post_id)
+
+            except Exception as e:
+                logger.error("Reel generation failed for %s image %d: %s", post_id, idx, e)
+
+        # Step 4: For carousels, create a combined reel
+        if len(reel_paths) >= 2:
+            combined_path = os.path.join(post_dir, "reel_combined.mp4")
+            try:
+                await video_compositor.concatenate_videos(reel_paths, combined_path)
+                reel_paths.append(combined_path)
+            except Exception as e:
+                logger.error("Reel concatenation failed for %s: %s", post_id, e)
+
+        return reel_paths
 
     async def _maybe_refill_queue(self):
         """Auto-generate briefs when queue runs low."""

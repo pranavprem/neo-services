@@ -115,6 +115,58 @@ async def post_composite(
         logger.error(f"Failed to post composite to Discord: {e}")
 
 
+async def post_reel_video(
+    video_path: str,
+    category: str,
+    theme: str,
+    caption: str,
+    hashtags: list[str],
+    post_id: str,
+):
+    """Post a reel video (MP4) to Discord as a file attachment."""
+    if not DISCORD_WEBHOOK_URL:
+        return
+
+    category_emoji = {
+        "futuristic_concept": "🚀",
+        "dream_space": "🏠",
+        "what_if": "🤔",
+        "pick_your": "🎯",
+        "then_vs_2040": "🕰️",
+        "gf_knows": "💕",
+        "meme": "😂",
+    }
+
+    emoji = category_emoji.get(category, "🎬")
+    hashtag_str = " ".join(f"#{t}" for t in hashtags[:10]) if hashtags else ""
+    filename = os.path.basename(video_path)
+    is_combined = "combined" in filename
+
+    embed = {
+        "title": f"{emoji} 🎬 {theme} — {'Combined Reel' if is_combined else 'Reel'}",
+        "description": f"**Caption:**\n{caption}\n\n{hashtag_str}",
+        "color": 0xe040fb,  # Purple for reels
+        "footer": {
+            "text": f"📁 {post_id} • {filename} • {category.replace('_', ' ').title()}"
+        },
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            video_data = Path(video_path).read_bytes()
+            resp = await client.post(
+                DISCORD_WEBHOOK_URL,
+                data={"payload_json": json.dumps({"embeds": [embed]})},
+                files={"file": (filename, video_data, "video/mp4")},
+            )
+            if resp.status_code in (200, 204):
+                logger.info("Posted reel %s to Discord", filename)
+            else:
+                logger.error("Discord reel webhook failed: %s %s", resp.status_code, resp.text)
+    except Exception as e:
+        logger.error("Failed to post reel to Discord: %s", e)
+
+
 async def post_queue_preview(queue_items: list[dict]):
     """Post the full pipeline queue with complete prompts to Discord."""
     if not DISCORD_WEBHOOK_URL or not queue_items:

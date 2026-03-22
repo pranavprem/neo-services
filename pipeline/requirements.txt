@@ -3,3 +3,6 @@ uvicorn[standard]
 httpx
 websockets
 Pillow
+audiocraft
+torch
+torchaudio
