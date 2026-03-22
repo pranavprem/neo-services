@@ -115,6 +115,24 @@ class QueueManager:
                 ids.append(cursor.lastrowid)
         return ids
 
+    def add_custom_item(self, prompt: str, theme: str = "Custom",
+                        caption: str = "", hashtags: str = "",
+                        width: int = 1024, height: int = 1024,
+                        steps: int = 40, guidance: float = 4.5,
+                        seed: int | None = None, priority: int = 100) -> int:
+        """Add a single custom image to the queue with high priority."""
+        with self._post_id_lock, self._get_conn() as conn:
+            post_id = self._generate_post_id(conn)
+            cursor = conn.execute(
+                """INSERT INTO queue
+                   (post_id, category, post_type, theme, prompt, caption,
+                    hashtags, image_index, priority, steps, guidance, width, height, seed)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (post_id, "custom", "single", theme, prompt, caption,
+                 hashtags, 0, priority, steps, guidance, width, height, seed),
+            )
+            return cursor.lastrowid
+
     def recover_stale_rendering(self) -> int:
         """Reset any items stuck in 'rendering' back to 'pending' (crash recovery)."""
         with self._get_conn() as conn:

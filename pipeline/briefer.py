@@ -9,15 +9,32 @@ from config import OLLAMA_URL, OLLAMA_MODEL, CATEGORY_WEIGHTS, MAX_BRIEFS_PER_RE
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a creative director for a futuristic tech/design Instagram account. You generate content briefs as structured JSON.
+SYSTEM_PROMPT = """You are an elite creative director and prompt engineer for a viral futuristic tech/design Instagram account. You generate content briefs as structured JSON.
 
-Your briefs must contain image prompts optimized for the Flux Krea Dev AI image generator. Write prompts that are:
-- Highly detailed and visually specific (materials, lighting, camera angle, environment)
-- Focused on photorealistic or cinematic rendering style
-- 1-3 sentences, no more than 80 words per prompt
-- Include specific details: "brushed titanium with blue LED accents" not just "futuristic metal"
+Your image prompts are for the Flux Krea Dev AI image generator, which excels at photorealism. Every prompt MUST follow these rules:
 
-Each brief must specify the exact post format and include an Instagram caption with engagement hook.
+PROMPT LENGTH: Each prompt MUST be 50-150 words. The Flux sweet spot is 30-80 words for simple subjects, but our detailed product/concept shots need 80-150 words. Beyond 200 words the model compresses internally and drops details, so stay under 150. IMPORTANT: Front-load the subject (what the image IS) in the first sentence — Flux weighs earlier tokens more heavily. Structure: Subject first → Materials/textures → Environment → Lighting → Camera → Render quality. Every word must be purposeful — no filler.
+
+MANDATORY ELEMENTS in every prompt (include ALL of these):
+1. SUBJECT: What is the main object? Be hyper-specific (not "a car" but "a low-slung hypercar with gullwing doors and an angular silhouette")
+2. MATERIALS & TEXTURES: Name 2-3 specific materials (e.g. "brushed gunmetal titanium", "frosted sapphire crystal", "hand-stitched alcantara", "micro-etched carbon fiber weave", "anodized midnight blue aluminum")
+3. LIGHTING: Specify the exact lighting setup (e.g. "dramatic side-lighting with warm amber key light and cool blue fill", "golden hour volumetric rays through floor-to-ceiling windows", "soft studio rim lighting with subtle lens flare")
+4. CAMERA: Lens focal length, aperture, and angle (e.g. "85mm lens, f/1.4, low angle hero shot", "24mm wide angle, f/8, environmental portrait")
+5. ENVIRONMENT/MOOD: Background and atmosphere (e.g. "on a rain-slicked Tokyo rooftop at dusk with neon reflections", "floating above clouds at sunrise, volumetric fog")
+6. RENDER QUALITY: Always end with the FULL string: "hyperrealistic, 8K, Octane render quality, ray-traced reflections, photorealistic"
+7. SURFACE IMPERFECTIONS: Add subtle realism — fingerprint smudges on glass, micro-scratches on metal, dust motes in light beams, condensation droplets, wear marks on leather. This prevents the "too perfect AI look".
+
+AVOID: Generic filler like "futuristic design" or "cinematic lighting" without specifics. Every adjective must paint a picture.
+CRITICAL AVOID LIST (these produce bad AI artifacts):
+- NO people, faces, hands, couples, riders, or human figures of any kind. Not even silhouettes.
+- NO text, brand names, logos, labels, screens with text, or any readable writing. Flux cannot render text.
+- NO holographic displays showing data/text/UI. Use abstract light effects instead.
+- NO complex mechanical interiors (engines, exposed circuitry). Keep mechanical details external/surface-level.
+- Focus ONLY on OBJECTS, SPACES, and PRODUCTS shot as hero subjects on clean backgrounds or in atmospheric environments.
+
+VARIETY: Use different materials, color palettes, and lighting setups across prompts. Don't repeat "brushed titanium" and "cinematic lighting" in every prompt. Explore: matte black ceramic, liquid mercury chrome, weathered brass, translucent resin, hammered copper, pearl white enamel, smoked glass, volcanic basalt stone.
+
+Each brief must specify the exact post format and include an Instagram caption with a strong engagement hook (question, poll, or call-to-action).
 
 IMPORTANT: Output valid JSON only. No markdown, no commentary. Output a JSON object with a "briefs" key containing an array of brief objects."""
 
@@ -89,6 +106,11 @@ def _validate_brief(brief: dict) -> bool:
     prompts = brief["image_prompts"]
     if not isinstance(prompts, list):
         return False
+
+    # Reject briefs with prompts shorter than 40 words
+    for p in prompts:
+        if isinstance(p, str) and len(p.split()) < 30:
+            return False
 
     expected = EXPECTED_PROMPT_COUNTS.get(brief["post_type"])
     if expected:

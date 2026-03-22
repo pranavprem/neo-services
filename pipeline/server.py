@@ -212,6 +212,68 @@ async def api_progress():
     return data
 
 
+class CustomImageRequest(BaseModel):
+    prompt: str
+    theme: str = "Custom"
+    caption: str = ""
+    hashtags: str = ""
+    width: int = 1024
+    height: int = 1024
+    steps: int = 40
+    guidance: float = 4.5
+    seed: int | None = None
+    raw: bool = False  # If True, send prompt as-is. If False, append quality suffix.
+
+
+QUALITY_SUFFIX = ", hyperrealistic, 8K, Octane render quality, ray-traced reflections, photorealistic"
+
+
+@app.post("/api/queue/custom")
+async def api_queue_custom(req: CustomImageRequest):
+    """Insert a custom image at the front of the queue (priority 100). Stackable.
+    
+    Set raw=true to send prompt exactly as-is to Flux.
+    Default (raw=false) appends quality keywords to improve output.
+    """
+    # Get the next priority level above any existing custom items
+    pending = await asyncio.to_thread(queue_manager.get_queue, "pending")
+    max_priority = max((i.get("priority", 0) for i in pending), default=0)
+    priority = max(max_priority + 1, 100)
+
+    prompt = req.prompt if req.raw else req.prompt.rstrip(", .") + QUALITY_SUFFIX
+
+    item_id = await asyncio.to_thread(
+        queue_manager.add_custom_item,
+        prompt=prompt,
+        theme=req.theme,
+        caption=req.caption,
+        hashtags=req.hashtags,
+        width=req.width,
+        height=req.height,
+        steps=req.steps,
+        guidance=req.guidance,
+        seed=req.seed,
+        priority=priority,
+    )
+
+    await broadcast({
+        "type": "queue_update",
+        "action": "custom_added",
+        "items": [{"id": item_id, "priority": priority}],
+    })
+
+    return {"ok": True, "id": item_id, "priority": priority, "position": "next"}
+
+
+@app.post("/api/queue/report")
+async def api_queue_report():
+    """Post the full queue preview to Discord immediately."""
+    pending_items = await asyncio.to_thread(queue_manager.get_queue, "pending")
+    from discord_notifier import post_queue_preview
+    await post_queue_preview(pending_items)
+    return {"ok": True, "items_reported": len(pending_items)}
+
+
 @app.post("/api/pause")
 async def api_pause():
     if renderer:
