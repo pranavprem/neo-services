@@ -1,0 +1,27 @@
+Create an agent team called "pipeline-team".
+
+Task: Build a content generation pipeline for Instagram as specified in pipeline/SPEC.md. Read it thoroughly first.
+
+Key priorities:
+1. The dashboard UI must show LIVE Flux Krea Dev progress (step X/40, ETA, percentage)
+2. The queue must be editable from the UI (edit prompts before they render)
+3. SQLite persistence so the pipeline survives restarts
+4. Ollama integration for generating creative content briefs
+5. Pillow compositing for grids and side-by-side images
+6. WebSocket for real-time progress updates to the dashboard
+
+Build this incrementally:
+1. First, add a /progress endpoint to imagegen/app.py so we can track render progress
+2. Build the pipeline server (server.py, queue.py, config.py)
+3. Build the briefer (briefer.py) with Ollama integration
+4. Build the renderer (renderer.py) that calls ImageGen API and tracks progress
+5. Build the compositor (compositor.py) for grids and side-by-side
+6. Build the trends scraper (trends.py) - basic Reddit/Google Trends
+7. Build the dashboard UI (static/index.html) - dark theme, live updates
+8. Wire everything together and test
+
+The existing ImageGen API is at localhost:9502. Ollama is at localhost:11434 with llama3.2.
+Do NOT modify docker-compose.yml or touch the whisper/piper directories.
+
+When completely finished, run:
+openclaw system event --text "Pipeline build complete: Content generation pipeline with dashboard UI built at ~/git/neo-services/pipeline/" --mode now

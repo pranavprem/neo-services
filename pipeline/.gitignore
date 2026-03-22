@@ -1,0 +1,5 @@
+output/
+pipeline.db
+__pycache__/
+*.pyc
+.venv/

@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Content Pipeline Dashboard</title>
+<style>
+:root {
+    --bg-primary: #0f0f1a;
+    --bg-secondary: #1a1a2e;
+    --bg-tertiary: #16213e;
+    --accent: #00d4ff;
+    --accent-dim: #0a7a94;
+    --text: #e0e0e0;
+    --text-dim: #888;
+    --success: #00ff88;
+    --warning: #ffaa00;
+    --danger: #ff4466;
+    --border: #2a2a4a;
+    --radius: 10px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    background: var(--bg-primary);
+    color: var(--text);
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+}
+
+header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+header .controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.ws-status {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--danger);
+    transition: background 0.3s;
+}
+.ws-status.connected { background: var(--success); }
+
+/* Buttons */
+button {
+    background: var(--bg-tertiary);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+button:hover { border-color: var(--accent); color: var(--accent); }
+button.primary { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: var(--accent); color: var(--bg-primary); }
+button.danger:hover { border-color: var(--danger); color: var(--danger); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Sections */
+.section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.section h2 {
+    font-size: 15px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+}
+
+/* Status Bar */
+.status-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.status-indicator {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    flex-shrink: 0;
+}
+.status-indicator.rendering { background: var(--accent); animation: pulse 1.5s infinite; }
+.status-indicator.idle { background: var(--success); }
+.status-indicator.paused { background: var(--warning); }
+.status-indicator.briefing { background: #a855f7; animation: pulse 1.5s infinite; }
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.status-text { font-size: 15px; flex: 1; }
+.status-meta { color: var(--text-dim); font-size: 13px; }
+
+/* Progress Bar */
+.progress-container {
+    margin-top: 12px;
+}
+
+.progress-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    margin-bottom: 6px;
+    color: var(--text-dim);
+}
+
+.progress-bar {
+    height: 8px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+    border-radius: 4px;
+    transition: width 0.5s ease;
+    width: 0%;
+}
+
+.progress-prompt {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 8px;
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Queue */
+.queue-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.queue-item {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 10px;
+    transition: border-color 0.2s;
+}
+.queue-item:hover { border-color: var(--accent-dim); }
+
+.queue-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.queue-item-id {
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.queue-item-category {
+    font-size: 11px;
+    background: var(--bg-tertiary);
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: var(--text-dim);
+}
+
+.queue-item-theme {
+    font-size: 14px;
+    margin-bottom: 6px;
+}
+
+.queue-item-prompt {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+    line-height: 1.4;
+}
+
+.queue-item-actions {
+    display: flex;
+    gap: 8px;
+}
+.queue-item-actions button { font-size: 11px; padding: 4px 10px; }
+
+/* Edit Modal */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    justify-content: center;
+    align-items: center;
+}
+.modal-overlay.active { display: flex; }
+
+.modal {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    width: 90%;
+    max-width: 600px;
+}
+.modal h3 { margin-bottom: 16px; color: var(--accent); }
+.modal textarea {
+    width: 100%;
+    background: var(--bg-primary);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    font-family: inherit;
+    font-size: 13px;
+    resize: vertical;
+    min-height: 100px;
+    margin-bottom: 12px;
+}
+.modal textarea:focus { outline: none; border-color: var(--accent); }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* Gallery */
+.gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+}
+
+.gallery-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+.gallery-card:hover { border-color: var(--accent); }
+
+.gallery-card img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    display: block;
+}
+
+.gallery-card-info {
+    padding: 10px;
+}
+.gallery-card-info .theme { font-size: 13px; margin-bottom: 4px; }
+.gallery-card-info .meta { font-size: 11px; color: var(--text-dim); }
+
+/* Image modal */
+.image-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 200;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+}
+.image-modal.active { display: flex; }
+.image-modal-content {
+    max-width: 900px;
+    width: 100%;
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+.image-modal-content img {
+    width: 100%;
+    display: block;
+}
+.image-modal-caption {
+    padding: 16px;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+.image-modal-close {
+    position: absolute;
+    top: 20px; right: 20px;
+    background: none; border: none;
+    color: #fff; font-size: 28px;
+    cursor: pointer;
+}
+
+/* Trends */
+.trend-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.trend-item {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+}
+.trend-source {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 4px;
+}
+.trend-topic { font-size: 13px; }
+.trend-desc { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+/* Settings */
+.setting-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+.setting-row label {
+    flex: 0 0 180px;
+    font-size: 13px;
+    color: var(--text-dim);
+}
+.setting-row input[type="range"] {
+    flex: 1;
+    accent-color: var(--accent);
+}
+.setting-row .value {
+    flex: 0 0 50px;
+    text-align: right;
+    font-size: 13px;
+    color: var(--accent);
+}
+
+/* Toast */
+.toast-container {
+    position: fixed;
+    top: 20px; right: 20px;
+    z-index: 300;
+}
+.toast {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    animation: slideIn 0.3s ease;
+    max-width: 360px;
+}
+.toast.error { border-color: var(--danger); }
+.toast.success { border-color: var(--success); }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Empty state */
+.empty { text-align: center; padding: 32px; color: var(--text-dim); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>Content Pipeline</h1>
+        <div class="controls">
+            <div class="ws-status" id="wsStatus" title="WebSocket disconnected"></div>
+            <button id="pauseBtn" onclick="togglePause()">Pause</button>
+        </div>
+    </header>
+
+    <!-- Status -->
+    <div class="section" id="statusSection">
+        <h2>Status</h2>
+        <div class="status-bar">
+            <div class="status-indicator" id="statusDot"></div>
+            <span class="status-text" id="statusText">Connecting...</span>
+            <span class="status-meta" id="statusMeta"></span>
+        </div>
+        <div class="progress-container" id="progressContainer" style="display:none">
+            <div class="progress-info">
+                <span id="progressStep">Step 0/0</span>
+                <span id="progressPct">0%</span>
+                <span id="progressEta">ETA --</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-prompt" id="progressPrompt"></div>
+        </div>
+    </div>
+
+    <!-- Queue -->
+    <div class="section">
+        <div class="queue-header">
+            <h2>Queue</h2>
+            <button class="primary" onclick="generateBriefs()">Generate Briefs</button>
+        </div>
+        <div id="queueList"><div class="empty">Loading queue...</div></div>
+    </div>
+
+    <!-- Completed -->
+    <div class="section">
+        <h2>Completed Posts</h2>
+        <div class="gallery" id="completedGallery"><div class="empty">No completed posts yet</div></div>
+    </div>
+
+    <!-- Trends -->
+    <div class="section">
+        <div class="queue-header">
+            <h2>Trending Topics</h2>
+            <button onclick="refreshTrends()">Refresh</button>
+        </div>
+        <div class="trend-list" id="trendsList"><div class="empty">Loading trends...</div></div>
+    </div>
+
+    <!-- Settings -->
+    <div class="section">
+        <h2>Settings</h2>
+        <div id="settingsPanel"></div>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal">
+        <h3>Edit Queue Item #<span id="editItemId"></span></h3>
+        <label style="font-size:13px;color:var(--text-dim)">Prompt</label>
+        <textarea id="editPrompt"></textarea>
+        <label style="font-size:13px;color:var(--text-dim)">Caption</label>
+        <textarea id="editCaption" style="min-height:60px"></textarea>
+        <div class="modal-actions">
+            <button onclick="closeEditModal()">Cancel</button>
+            <button class="primary" onclick="saveEdit()">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Image Modal -->
+<div class="image-modal" id="imageModal">
+    <button class="image-modal-close" onclick="closeImageModal()">&times;</button>
+    <div class="image-modal-content">
+        <img id="imageModalImg" src="" alt="">
+        <div class="image-modal-caption" id="imageModalCaption"></div>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+const API = '';
+let ws = null;
+let currentEditId = null;
+
+// --- WebSocket ---
+function connectWS() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${proto}//${location.host}/ws/progress`);
+
+    ws.onopen = () => {
+        document.getElementById('wsStatus').classList.add('connected');
+        document.getElementById('wsStatus').title = 'WebSocket connected';
+    };
+
+    ws.onclose = () => {
+        document.getElementById('wsStatus').classList.remove('connected');
+        document.getElementById('wsStatus').title = 'WebSocket disconnected';
+        setTimeout(connectWS, 3000);
+    };
+
+    ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        handleWSMessage(msg);
+    };
+}
+
+function handleWSMessage(msg) {
+    switch (msg.type) {
+        case 'render_progress':
+            updateProgress(msg);
+            break;
+        case 'status_change':
+            updateStatus(msg);
+            break;
+        case 'queue_update':
+            loadQueue();
+            break;
+        case 'image_complete':
+        case 'post_complete':
+            loadCompleted();
+            loadQueue();
+            break;
+        case 'error':
+            showToast(msg.message, 'error');
+            break;
+    }
+}
+
+// --- Progress ---
+function updateProgress(data) {
+    const container = document.getElementById('progressContainer');
+    container.style.display = 'block';
+
+    document.getElementById('progressStep').textContent = `Step ${data.step}/${data.total_steps}`;
+    document.getElementById('progressPct').textContent = `${data.percentage}%`;
+    document.getElementById('progressFill').style.width = `${data.percentage}%`;
+    document.getElementById('progressPrompt').textContent = data.prompt || '';
+
+    if (data.eta_seconds != null) {
+        const mins = Math.floor(data.eta_seconds / 60);
+        const secs = Math.floor(data.eta_seconds % 60);
+        document.getElementById('progressEta').textContent = `ETA ${mins}m ${secs}s`;
+    }
+
+    // Update status to rendering
+    document.getElementById('statusDot').className = 'status-indicator rendering';
+    document.getElementById('statusText').textContent = `Rendering: "${(data.prompt || '').substring(0, 60)}..."`;
+}
+
+function updateStatus(data) {
+    const dot = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    const meta = document.getElementById('statusMeta');
+
+    dot.className = `status-indicator ${data.status}`;
+
+    const labels = {
+        idle: 'Idle — waiting for queue items',
+        rendering: 'Rendering...',
+        compositing: 'Compositing images...',
+        briefing: 'Generating briefs via Ollama...',
+        paused: 'Pipeline paused',
+    };
+    text.textContent = labels[data.status] || data.status;
+
+    if (data.queue_length != null) {
+        meta.textContent = `${data.queue_length} in queue`;
+    }
+
+    if (data.status !== 'rendering') {
+        document.getElementById('progressContainer').style.display = 'none';
+    }
+}
+
+// --- Queue ---
+async function loadQueue() {
+    try {
+        const resp = await fetch(`${API}/api/queue?status=pending`);
+        const data = await resp.json();
+        renderQueue(data.items || []);
+    } catch (e) {
+        console.error('Failed to load queue:', e);
+    }
+}
+
+function renderQueue(items) {
+    const list = document.getElementById('queueList');
+    if (!items.length) {
+        list.innerHTML = '<div class="empty">Queue is empty — click Generate Briefs to add content</div>';
+        return;
+    }
+    list.innerHTML = items.map(item => `
+        <div class="queue-item" data-id="${item.id}">
+            <div class="queue-item-header">
+                <span class="queue-item-id">#${item.id} · ${item.post_id}</span>
+                <span class="queue-item-category">${item.category} · ${item.post_type}</span>
+            </div>
+            <div class="queue-item-theme">${escapeHtml(item.theme)}</div>
+            <div class="queue-item-prompt">${escapeHtml(item.prompt).substring(0, 200)}${item.prompt.length > 200 ? '...' : ''}</div>
+            <div class="queue-item-actions">
+                <button onclick="openEditModal(${item.id}, ${escapeAttr(JSON.stringify(item))})">Edit</button>
+                <button class="danger" onclick="deleteQueueItem(${item.id})">Delete</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function deleteQueueItem(id) {
+    if (!confirm(`Delete queue item #${id}?`)) return;
+    try {
+        await fetch(`${API}/api/queue/${id}`, { method: 'DELETE' });
+        loadQueue();
+        showToast('Item deleted', 'success');
+    } catch (e) {
+        showToast('Failed to delete item', 'error');
+    }
+}
+
+async function generateBriefs() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+    try {
+        const resp = await fetch(`${API}/api/generate-briefs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ count: 10 }),
+        });
+        const data = await resp.json();
+        showToast(`Generated ${data.briefs_generated} briefs (${data.queue_items_added} images)`, 'success');
+        loadQueue();
+    } catch (e) {
+        showToast('Failed to generate briefs', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generate Briefs';
+    }
+}
+
+// --- Edit Modal ---
+function openEditModal(id, item) {
+    currentEditId = id;
+    document.getElementById('editItemId').textContent = id;
+    document.getElementById('editPrompt').value = item.prompt || '';
+    document.getElementById('editCaption').value = item.caption || '';
+    document.getElementById('editModal').classList.add('active');
+}
+
+function closeEditModal() {
+    document.getElementById('editModal').classList.remove('active');
+    currentEditId = null;
+}
+
+async function saveEdit() {
+    if (!currentEditId) return;
+    const prompt = document.getElementById('editPrompt').value.trim();
+    const caption = document.getElementById('editCaption').value.trim();
+    try {
+        await fetch(`${API}/api/queue/${currentEditId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, caption }),
+        });
+        showToast('Item updated', 'success');
+        closeEditModal();
+        loadQueue();
+    } catch (e) {
+        showToast('Failed to update item', 'error');
+    }
+}
+
+// --- Completed ---
+async function loadCompleted() {
+    try {
+        const resp = await fetch(`${API}/api/completed?limit=20`);
+        const data = await resp.json();
+        renderCompleted(data.posts || []);
+    } catch (e) {
+        console.error('Failed to load completed:', e);
+    }
+}
+
+function renderCompleted(posts) {
+    const gallery = document.getElementById('completedGallery');
+    if (!posts.length) {
+        gallery.innerHTML = '<div class="empty">No completed posts yet</div>';
+        return;
+    }
+    gallery.innerHTML = posts.map(post => {
+        const imgSrc = post.images && post.images.length > 0
+            ? `/output/${post.images[0].path.split('/output/')[1] || ''}`
+            : '';
+        return `
+            <div class="gallery-card" onclick="showImageModal('${escapeAttr(imgSrc)}', ${escapeAttr(JSON.stringify(post.caption || ''))})">
+                ${imgSrc ? `<img src="${imgSrc}" alt="${escapeHtml(post.theme)}" loading="lazy">` : '<div style="aspect-ratio:1;background:var(--bg-tertiary)"></div>'}
+                <div class="gallery-card-info">
+                    <div class="theme">${escapeHtml(post.theme)}</div>
+                    <div class="meta">${post.category} · ${post.image_count || post.images.length} images</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function showImageModal(src, caption) {
+    document.getElementById('imageModalImg').src = src;
+    document.getElementById('imageModalCaption').textContent = caption;
+    document.getElementById('imageModal').classList.add('active');
+}
+
+function closeImageModal() {
+    document.getElementById('imageModal').classList.remove('active');
+}
+
+// --- Trends ---
+async function loadTrends() {
+    try {
+        const resp = await fetch(`${API}/api/trends`);
+        const data = await resp.json();
+        renderTrends(data.trends || []);
+    } catch (e) {
+        console.error('Failed to load trends:', e);
+    }
+}
+
+function renderTrends(trends) {
+    const list = document.getElementById('trendsList');
+    if (!trends.length) {
+        list.innerHTML = '<div class="empty">No trends yet — click Refresh</div>';
+        return;
+    }
+    list.innerHTML = trends.slice(0, 12).map(t => `
+        <div class="trend-item">
+            <div class="trend-source">${escapeHtml(t.source)}</div>
+            <div class="trend-topic">${escapeHtml(t.topic)}</div>
+            <div class="trend-desc">${escapeHtml(t.description || '')}</div>
+        </div>
+    `).join('');
+}
+
+async function refreshTrends() {
+    try {
+        await fetch(`${API}/api/trends/refresh`, { method: 'POST' });
+        showToast('Trends refreshed', 'success');
+        setTimeout(loadTrends, 1000);
+    } catch (e) {
+        showToast('Failed to refresh trends', 'error');
+    }
+}
+
+// --- Settings ---
+function renderSettings() {
+    const weights = {
+        futuristic_concept: 30,
+        dream_space: 15,
+        what_if: 15,
+        pick_your: 15,
+        then_vs_2040: 10,
+        gf_knows: 10,
+        meme: 5,
+    };
+    const panel = document.getElementById('settingsPanel');
+    panel.innerHTML = Object.entries(weights).map(([k, v]) => `
+        <div class="setting-row">
+            <label>${k.replace(/_/g, ' ')}</label>
+            <input type="range" min="0" max="50" value="${v}" oninput="this.nextElementSibling.textContent=this.value+'%'">
+            <span class="value">${v}%</span>
+        </div>
+    `).join('');
+}
+
+// --- Pause/Resume ---
+async function togglePause() {
+    const btn = document.getElementById('pauseBtn');
+    const isPaused = btn.textContent === 'Resume';
+    try {
+        await fetch(`${API}/api/${isPaused ? 'resume' : 'pause'}`, { method: 'POST' });
+        btn.textContent = isPaused ? 'Pause' : 'Resume';
+    } catch (e) {
+        showToast('Failed to toggle pause', 'error');
+    }
+}
+
+// --- Status ---
+async function loadStatus() {
+    try {
+        const resp = await fetch(`${API}/api/status`);
+        const data = await resp.json();
+
+        const dot = document.getElementById('statusDot');
+        const text = document.getElementById('statusText');
+        const meta = document.getElementById('statusMeta');
+        const btn = document.getElementById('pauseBtn');
+
+        dot.className = `status-indicator ${data.status}`;
+
+        if (data.status === 'rendering' && data.current_item) {
+            text.textContent = `Rendering: "${(data.current_item.prompt || '').substring(0, 60)}..."`;
+        } else if (data.status === 'paused') {
+            text.textContent = 'Pipeline paused';
+        } else {
+            text.textContent = 'Idle — waiting for queue items';
+        }
+
+        meta.textContent = `${data.queue_length} pending · ${data.completed_today} completed today`;
+        btn.textContent = data.paused ? 'Resume' : 'Pause';
+    } catch (e) {
+        document.getElementById('statusText').textContent = 'Unable to connect to pipeline';
+    }
+}
+
+// --- Utils ---
+function escapeHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str || '';
+    return d.innerHTML;
+}
+function escapeAttr(str) {
+    return (str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+function showToast(message, type = '') {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 5000);
+}
+
+// Close modals on ESC
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeEditModal();
+        closeImageModal();
+    }
+});
+
+// Click outside modal to close
+document.getElementById('editModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeEditModal();
+});
+document.getElementById('imageModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeImageModal();
+});
+
+// --- Init ---
+connectWS();
+loadStatus();
+loadQueue();
+loadCompleted();
+loadTrends();
+renderSettings();
+
+// Periodic refresh (fallback if WS disconnects)
+setInterval(loadStatus, 15000);
+</script>
+</body>
+</html>
