@@ -12,6 +12,9 @@ RUN pip install --no-cache-dir --upgrade pip "setuptools<82" wheel
 
 # Install whisper deps that need building, then whisper itself
 COPY requirements.txt .
+# Docker runs this service on CPU, including Linux ARM64 on Apple Silicon.
+# Install the CPU wheel first so PyPI does not select CUDA-only dependencies.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1"
 RUN PIP_NO_BUILD_ISOLATION=0 pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .
